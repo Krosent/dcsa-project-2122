@@ -1,13 +1,9 @@
-# Task 2; DCSA course at VUB; (c) Artyom Kuznetsov
-import numbers
+# Task 3; DCSA course at VUB; (c) Artyom Kuznetsov
 
 from mrjob.job import MRJob
 from mrjob.step import MRStep
-from numbers import Number
 import re
-import pandas as pd
 import math
-
 
 class MRKNearestNeighbour(MRJob):
     # store maximum values
@@ -63,26 +59,18 @@ class MRKNearestNeighbour(MRJob):
         row[4] = (float(row[4]) - self.minimum[3]) / (self.maximum[3] - self.minimum[3])
         yield None, row
 
-    # TODO: Implement Euclidean Distance
     def measure_distance_reducer(self, _, rows):
-        rows
-        yield rows
-
-
-    # def euclidean_distance(row1, row2):
-    #     distance = 0.0
-    #     for i in range(len(row1) - 1):
-    #         distance += (row1[i] - row2[i]) ** 2
-    #     return sqrt(distance)
-
-    # def _combiner(self, _, rows2):
-    #     # yield None, ('kek', (l_rows[0], id_min, id_max))
-    #     yield 0, list(rows2)
-    #
-    # def shitty_reducer(self, row, rows):
-    #     yield row, list(rows)
-    #     # yield row, (min(list(rows)), max(list(rows)))
-
+        # calculate distance between each pairs
+        rows = list(rows)
+        for i_row in rows:
+            filtered_rows = list(filter(lambda row: row != i_row, rows))
+            for j_row in filtered_rows:
+                result_without_square = 0.0
+                for i in range(len(i_row) - 1):
+                    diff = (float(i_row[i]) - float(j_row[i])) ** 2.0
+                    result_without_square = result_without_square + diff
+                eucl_dist = math.sqrt(result_without_square)
+                yield None, (j_row, i_row, eucl_dist)
 
 if __name__ == '__main__':
     MRKNearestNeighbour.run()
