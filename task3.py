@@ -12,12 +12,15 @@ class MRKNearestNeighbour(MRJob):
     minimum = [math.inf for _ in range(4)]
     # store test data
     test = []
+    k_neighbours = 15
 
     def steps(self):
         return [MRStep(mapper=self.split_mapper),
                 MRStep(mapper=self.values_mapper),
                 MRStep(mapper=self.normalize_features_mapper),
-                MRStep(reducer=self.measure_distance_reducer)
+                MRStep(reducer=self.measure_distance_reducer),
+                MRStep(mapper=self.closest_neighbours_mapper),
+                #MRStep(reducer=self.sort_reducer)
                 # MRStep(combiner=self._combiner),
                 # MRStep(reducer=self.shitty_reducer)
                 ]
@@ -71,6 +74,13 @@ class MRKNearestNeighbour(MRJob):
                     result_without_square = result_without_square + diff
                 eucl_dist = math.sqrt(result_without_square)
                 yield None, (j_row, i_row, eucl_dist)
+
+    def closest_neighbours_mapper(self, _, row):
+        j_row, i_row, eucl_dist = row
+        yield (i_row[0], j_row[0]), eucl_dist
+
+    def sort_reducer(self, key, values):
+        yield key, sorted(values)
 
 if __name__ == '__main__':
     MRKNearestNeighbour.run()
