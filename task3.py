@@ -18,16 +18,11 @@ class MRKNearestNeighbour(MRJob):
         return [MRStep(mapper=self.split_mapper),
                 MRStep(mapper=self.values_mapper),
                 MRStep(mapper=self.normalize_features_mapper),
-                MRStep(reducer=self.measure_distance_reducer_final),
-                MRStep(reducer=self.group_measured_distances_reducer)
-                #MRStep(mapper=self.neighbours_remapper),
-                #MRStep(reducer=self.sort_reducer),
-                
-                #MRStep(reducer=self.sort_reducer),
-                #MRStep(mapper=self.closest_neighbours_mapper),
-                
-                # MRStep(combiner=self._combiner),
-                # MRStep(reducer=self.shitty_reducer)
+                MRStep(reducer=self.measure_distance_reducer),
+                MRStep(reducer=self.group_measured_distances_reducer),
+                MRStep(reducer=self.sort_and_k_nearest_neighbours_reducer),
+                MRStep(reducer=self.group_measured_distances_reducer),
+                MRStep(mapper=self.final_prediction_mapper)
                 ]
 
     def split_mapper(self, _, line):
@@ -70,23 +65,6 @@ class MRKNearestNeighbour(MRJob):
     def measure_distance_reducer(self, _, rows):
         # calculate distance between each pairs
         rows = list(rows)
-        duplicate_verification_list = []
-        for i_row in rows:
-            filtered_rows = list(filter(lambda row: row != i_row, rows))
-            for j_row in filtered_rows:
-                result_without_square = 0.0
-                for i in range(len(i_row) - 1):
-                    diff = (float(i_row[i]) - float(j_row[i])) ** 2.0
-                    result_without_square = result_without_square + diff
-                eucl_dist = math.sqrt(result_without_square)
-                # filter out possible duplicates
-                if (j_row, i_row) not in duplicate_verification_list and (i_row, j_row) not in duplicate_verification_list:
-                    duplicate_verification_list.append((j_row, i_row))
-                    yield None, (j_row, i_row, eucl_dist)
-
-    def measure_distance_reducer_final(self, _, rows):
-        # calculate distance between each pairs
-        rows = list(rows)
 
         for test_row in self.test:
             # get all rows from the sample
@@ -100,41 +78,43 @@ class MRKNearestNeighbour(MRJob):
                 if train_row[5] != '':
                     yield test_row, (train_row, eucl_dist)
 
-    # TODO: Stopped here!
     def group_measured_distances_reducer(self, test_row, train_rows):
         yield test_row, list(train_rows)
 
-    # row is (j_row, i_row, eucl_dist between them)
-    # def neighbours_remapper(self, _, row):
-    #     j_row, i_row, eucl_dist = row
-    #     yield j_row, (eucl_dist, i_row)
-
-    # TODO: Make Sorter
-    def sort_reducer_final(self, _, values):
+    # sort by closest neighbours and fetch k number of closest neighbours
+    def sort_and_k_nearest_neighbours_reducer(self, key, values):
         # sort by distances
-        sorted_values = list(values)
-        sorted_values.sort(key=lambda val: val[2])
+        # flatten values list
+        sorted_values = list(values)[0]
+        sorted_values.sort(key=lambda val: val[1])
         # take only k number of neighbours
         sorted_values = sorted_values[:self.k_neighbours]
         for sort_value in sorted_values:
-            yield None, sort_value
+            yield key, sort_value
 
-    def sort_reducer(self, _, values):
-        # sort by distances
-        sorted_values = list(values)
-        sorted_values.sort(key=lambda val: val[2])
-        # take only k number of neighbours
-        sorted_values = sorted_values[:self.k_neighbours]
-        for sort_value in sorted_values:
-            yield None, sort_value
+    # calculate which category occurs more often and make prediction based on that
+    def final_prediction_mapper(self, row, closest_neighbours):
+        iris_versicolor = 0
+        iris_setosa = 0
+        iris_virginica = 0
 
-    # sort by closest distance
-    #def sort_reducer(self, _, values):
-    #    yield None, sorted(values, key=lambda rec: rec[2])
+        # calculate which category occurs more often
+        for neighbour in closest_neighbours:
+            if neighbour[0][5] == 'Iris-versicolor':
+                iris_versicolor = iris_versicolor + 1
+            elif neighbour[0][5] == 'Iris-virginica':
+                iris_virginica = iris_virginica + 1
+            elif neighbour[0][5] == 'Iris-setosa':
+                iris_setosa = iris_setosa + 1
 
-    def closest_neighbours_mapper(self, _, row):
-        j_row, i_row, eucl_dist = row
-        yield (i_row[0], j_row[0]), eucl_dist
+        # output the feature ID with predicted category
+        if iris_versicolor >= iris_setosa and iris_versicolor >= iris_virginica:
+            yield row[0], 'Iris-versicolor'
+        elif iris_setosa >= iris_versicolor and iris_setosa >= iris_virginica:
+            yield  row[0], 'Iris-Setosa'
+        elif iris_virginica >= iris_versicolor and iris_virginica >= iris_setosa:
+            yield row[0], 'Iris-virginica'
+
 
 if __name__ == '__main__':
     MRKNearestNeighbour.run()
