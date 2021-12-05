@@ -19,8 +19,12 @@ class MRKNearestNeighbour(MRJob):
                 MRStep(mapper=self.values_mapper),
                 MRStep(mapper=self.normalize_features_mapper),
                 MRStep(reducer=self.measure_distance_reducer),
-                MRStep(mapper=self.closest_neighbours_mapper),
-                #MRStep(reducer=self.sort_reducer)
+                #MRStep(mapper=self.neighbours_remapper),
+                MRStep(reducer=self.sort_reducer),
+                
+                #MRStep(reducer=self.sort_reducer),
+                #MRStep(mapper=self.closest_neighbours_mapper),
+                
                 # MRStep(combiner=self._combiner),
                 # MRStep(reducer=self.shitty_reducer)
                 ]
@@ -65,6 +69,7 @@ class MRKNearestNeighbour(MRJob):
     def measure_distance_reducer(self, _, rows):
         # calculate distance between each pairs
         rows = list(rows)
+        duplicate_verification_list = []
         for i_row in rows:
             filtered_rows = list(filter(lambda row: row != i_row, rows))
             for j_row in filtered_rows:
@@ -73,14 +78,33 @@ class MRKNearestNeighbour(MRJob):
                     diff = (float(i_row[i]) - float(j_row[i])) ** 2.0
                     result_without_square = result_without_square + diff
                 eucl_dist = math.sqrt(result_without_square)
-                yield None, (j_row, i_row, eucl_dist)
+                # filter out possible duplicates
+                if (j_row, i_row) not in duplicate_verification_list and (i_row, j_row) not in duplicate_verification_list:
+                    duplicate_verification_list.append((j_row, i_row))
+                    yield None, (j_row, i_row, eucl_dist)
+
+    # row is (j_row, i_row, eucl_dist between them)
+    # def neighbours_remapper(self, _, row):
+    #     j_row, i_row, eucl_dist = row
+    #     yield j_row, (eucl_dist, i_row)
+
+    # 
+    def sort_reducer(self, _, values):
+        # sort by distances
+        sorted_values = list(values)
+        sorted_values.sort(key=lambda val: val[2])
+        # take only k number of neighbours
+        sorted_values = sorted_values[:self.k_neighbours]
+        for sort_value in sorted_values:
+            yield None, sort_value
+
+    # sort by closest distance
+    #def sort_reducer(self, _, values):
+    #    yield None, sorted(values, key=lambda rec: rec[2])
 
     def closest_neighbours_mapper(self, _, row):
         j_row, i_row, eucl_dist = row
         yield (i_row[0], j_row[0]), eucl_dist
-
-    def sort_reducer(self, key, values):
-        yield key, sorted(values)
 
 if __name__ == '__main__':
     MRKNearestNeighbour.run()
