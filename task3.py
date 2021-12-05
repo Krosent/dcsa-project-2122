@@ -18,9 +18,10 @@ class MRKNearestNeighbour(MRJob):
         return [MRStep(mapper=self.split_mapper),
                 MRStep(mapper=self.values_mapper),
                 MRStep(mapper=self.normalize_features_mapper),
-                MRStep(reducer=self.measure_distance_reducer),
+                MRStep(reducer=self.measure_distance_reducer_final),
+                MRStep(reducer=self.group_measured_distances_reducer)
                 #MRStep(mapper=self.neighbours_remapper),
-                MRStep(reducer=self.sort_reducer),
+                #MRStep(reducer=self.sort_reducer),
                 
                 #MRStep(reducer=self.sort_reducer),
                 #MRStep(mapper=self.closest_neighbours_mapper),
@@ -47,7 +48,7 @@ class MRKNearestNeighbour(MRJob):
 
             # append record if it has not species identification
             if species == "":
-                self.test.append((id, sepal_length_cm, sepal_width_cm, petal_length_cm, petal_width_cm))
+                self.test.append((id, float(sepal_length_cm), float(sepal_width_cm), float(petal_length_cm), float(petal_width_cm)))
 
             # determine min, max for each feature
             yield None, row
@@ -83,12 +84,41 @@ class MRKNearestNeighbour(MRJob):
                     duplicate_verification_list.append((j_row, i_row))
                     yield None, (j_row, i_row, eucl_dist)
 
+    def measure_distance_reducer_final(self, _, rows):
+        # calculate distance between each pairs
+        rows = list(rows)
+
+        for test_row in self.test:
+            # get all rows from the sample
+            filtered_rows = list(filter(lambda row: row != test_row, rows))
+            for train_row in filtered_rows:
+                result_without_square = 0.0
+                for i in range(len(train_row) - 1):
+                    diff = (float(test_row[i]) - float(train_row[i])) ** 2.0
+                    result_without_square = result_without_square + diff
+                eucl_dist = math.sqrt(result_without_square)
+                if train_row[5] != '':
+                    yield test_row, (train_row, eucl_dist)
+
+    # TODO: Stopped here!
+    def group_measured_distances_reducer(self, test_row, train_rows):
+        yield test_row, list(train_rows)
+
     # row is (j_row, i_row, eucl_dist between them)
     # def neighbours_remapper(self, _, row):
     #     j_row, i_row, eucl_dist = row
     #     yield j_row, (eucl_dist, i_row)
 
-    # 
+    # TODO: Make Sorter
+    def sort_reducer_final(self, _, values):
+        # sort by distances
+        sorted_values = list(values)
+        sorted_values.sort(key=lambda val: val[2])
+        # take only k number of neighbours
+        sorted_values = sorted_values[:self.k_neighbours]
+        for sort_value in sorted_values:
+            yield None, sort_value
+
     def sort_reducer(self, _, values):
         # sort by distances
         sorted_values = list(values)
